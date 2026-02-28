@@ -11,7 +11,7 @@
 #   task                    build for host OS/arch
 #   task test               run all tests
 #   task lint               go vet
-#   task build:all          cross-compile → dist/
+#   task build:all          cross-compile macOS amd64+arm64 → dist/ (native CGo required)
 #
 #   task commit             stage ALL changes & commit (required before release)
 #   task release            auto-bump version, tag, build all, publish GH release
@@ -68,14 +68,10 @@ tasks:
       - "{{.BINARY}}"
 
   build:all:
-    desc: Cross-compile peeksy for all supported platforms → dist/
+    desc: Build peeksy for macOS amd64 and arm64 (CGo/Fyne requires native build)
     cmds:
-      - task: build:linux-amd64
-      - task: build:linux-arm64
       - task: build:darwin-amd64
       - task: build:darwin-arm64
-      - task: build:windows-amd64
-
   build:linux-amd64:
     desc: Build for Linux/amd64
     env:
@@ -245,25 +241,19 @@ tasks:
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
           --draft \
-          {{.DIST}}/peeksy-linux-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-linux-arm64-{{.TAG}}.tar.gz \
           {{.DIST}}/peeksy-darwin-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-windows-amd64-{{.TAG}}.zip
+          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz
 
   # ── Internal helpers ──────────────────────────────────────────────────────
 
   _archive:
     internal: true
     desc: Compress dist/ binaries into release archives
-    cmds:
       - |
         cd {{.DIST}}
-        for bin in peeksy-linux-amd64 peeksy-linux-arm64 \
-                   peeksy-darwin-amd64 peeksy-darwin-arm64; do
+        for bin in peeksy-darwin-amd64 peeksy-darwin-arm64; do
           tar czf "${bin}-{{.TAG}}.tar.gz" "${bin}"
         done
-        zip peeksy-windows-amd64-{{.TAG}}.zip peeksy-windows-amd64.exe
 
   _tag-and-push:
     internal: true
@@ -280,11 +270,8 @@ tasks:
         gh release create {{.TAG}} \
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
-          {{.DIST}}/peeksy-linux-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-linux-arm64-{{.TAG}}.tar.gz \
           {{.DIST}}/peeksy-darwin-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-windows-amd64-{{.TAG}}.zip
+          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz
 
   # ── Utilities ──────────────────────────────────────────────────────────────
 
