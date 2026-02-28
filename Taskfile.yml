@@ -249,6 +249,7 @@ tasks:
   _archive:
     internal: true
     desc: Compress dist/ binaries into release archives
+    cmds:
       - |
         cd {{.DIST}}
         for bin in peeksy-darwin-amd64 peeksy-darwin-arm64; do
