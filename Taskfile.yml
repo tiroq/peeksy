@@ -160,13 +160,14 @@ tasks:
   #   2. Compute next version from conventional commits since last tag
   #   3. Run tests
   #   4. Cross-compile all platforms (fyne-cross for Linux/Windows, native for Darwin)
-  #   5. Create annotated git tag & push
-  #   6. Create GitHub release with all artifacts
+  #   5. Sign all artifacts with GPG key (produces .asc detached signatures)
+  #   6. Create annotated git tag & push
+  #   7. Create GitHub release with all artifacts + signatures
   #
   # Override bump level: task release -- minor | major | patch
   #
   # Agents should call `task commit` first, then `task release`.
-
+  # Verify signatures: gpg --verify peeksy-linux-amd64.tar.xz.asc peeksy-linux-amd64.tar.xz
   release:
     desc: >-
       Auto-bump version, cross-compile all platforms, and publish a GitHub release.
@@ -188,6 +189,7 @@ tasks:
       - task: test
       - task: build:all
         vars: { NEXT_TAG: "{{.TAG}}", VERSION: "{{.VER}}" }
+      - task: _sign-artifacts
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - task: _gh-release
@@ -219,15 +221,28 @@ tasks:
           cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
           cp fyne-cross/dist/linux-arm64/peeksy.tar.xz fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz
           cp fyne-cross/dist/windows-amd64/peeksy.zip fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip
+          for f in \
+            fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+            fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+            fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+            fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
+            fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz; do
+            gpg --batch --yes --local-user {{.GPG_KEY}} --detach-sign --armor "$f"
+          done
           gh release create {{.TAG}} \
             --title "Peeksy {{.TAG}}" \
             --generate-notes \
             --draft \
             fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+            fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz.asc \
             fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+            fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz.asc \
             fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+            fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip.asc \
             fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
-            fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz
+            fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz.asc \
+            fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz \
+            fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz.asc
 
   # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -238,9 +253,23 @@ tasks:
       - git tag -a {{.TAG}} -m "Release {{.TAG}}"
       - git push origin HEAD --follow-tags
 
+  _sign-artifacts:
+    internal: true
+    desc: Create GPG detached signatures (.asc) for all release artifacts
+    cmds:
+      - |
+        for f in \
+          fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+          fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+          fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz; do
+          gpg --batch --yes --local-user {{.GPG_KEY}} --detach-sign --armor "$f"
+        done
+
   _gh-release:
     internal: true
-    desc: Create public GitHub release and upload all platform archives
+    desc: Create public GitHub release and upload all platform archives + signatures
     cmds:
       - |
         cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
@@ -250,10 +279,15 @@ tasks:
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
           fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+          fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz.asc \
           fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+          fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz.asc \
           fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+          fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip.asc \
           fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
-          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz
+          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz.asc \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz.asc
 
   # ── Utilities ──────────────────────────────────────────────────────────────
 
