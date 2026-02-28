@@ -159,21 +159,23 @@ tasks:
   # ── Commit ────────────────────────────────────────────────────────────────
   #
   # Agents call this before release to commit all pending work.
-  # The commit message is passed via CLI_ARGS:
+  # The commit message is passed as a variable (avoids Task's CLI_ARGS quoting):
   #
-  #   task commit -- "feat: add dark mode"
-  #   task commit -- "fix: repair null pointer"
+  #   task commit MSG="feat: add dark mode"
+  #   task commit MSG="fix: repair null pointer"
 
   commit:
     desc: >-
       Stage ALL changes and create a git commit.
-      Pass the message as an argument: task commit -- "feat: your message"
+      Pass the message as: task commit MSG="type: your message"
+    vars:
+      MSG: '{{.MSG}}'
     preconditions:
-      - sh: '[ -n "{{.CLI_ARGS}}" ]'
-        msg: "Commit message required. Usage: task commit -- \"type: your message\""
+      - sh: '[ -n "{{.MSG}}" ]'
+        msg: "Commit message required. Usage: task commit MSG=\"type: your message\""
     cmds:
       - git add -A
-      - git commit -m "{{.CLI_ARGS}}"
+      - git commit -m "{{.MSG}}"
 
   # ── Release ───────────────────────────────────────────────────────────────
   #
