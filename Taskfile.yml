@@ -34,10 +34,14 @@ vars:
   APP_ID: github.com.tiroq.peeksy
   FYNE_CROSS: "{{.HOME}}/go/bin/fyne-cross"
 
-  # Next semver tag — computed by scripts/next-version.sh.
+  # Next semver tag (e.g. v0.2.0) — computed by scripts/next-version.sh.
   # Pass an optional bump level via CLI_ARGS, e.g.: task release -- minor
   NEXT_TAG:
     sh: bash scripts/next-version.sh {{.CLI_ARGS}}
+
+  # Version without leading 'v' for fyne/fyne-cross -app-version flag
+  VERSION:
+    sh: bash scripts/next-version.sh {{.CLI_ARGS}} | sed 's/^v//'
 
   # Short SHA for ldflags
   COMMIT:
@@ -68,18 +72,20 @@ tasks:
     desc: Cross-compile for all platforms via fyne-cross (requires Docker)
     cmds:
       - task: build:linux
+        vars: { VERSION: "{{.VERSION}}", NEXT_TAG: "{{.NEXT_TAG}}" }
       - task: build:windows
+        vars: { VERSION: "{{.VERSION}}", NEXT_TAG: "{{.NEXT_TAG}}" }
       - task: build:darwin
-
+        vars: { VERSION: "{{.VERSION}}", NEXT_TAG: "{{.NEXT_TAG}}" }
   build:linux:
     desc: Build for Linux amd64 + arm64 via fyne-cross (requires Docker)
     cmds:
-      - "{{.FYNE_CROSS}} linux -arch=amd64,arm64 -app-id={{.APP_ID}} -app-version={{trimPrefix .NEXT_TAG \"v\"}} -name={{.BINARY}} {{.MAIN}}"
+      - "{{.FYNE_CROSS}} linux -arch=amd64,arm64 -app-id={{.APP_ID}} -app-version={{.VERSION}} -name={{.BINARY}} {{.MAIN}}"
 
   build:windows:
     desc: Build for Windows amd64 via fyne-cross (requires Docker)
     cmds:
-      - "{{.FYNE_CROSS}} windows -arch=amd64 -app-id={{.APP_ID}} -app-version={{trimPrefix .NEXT_TAG \"v\"}} -name={{.BINARY}} {{.MAIN}}"
+      - "{{.FYNE_CROSS}} windows -arch=amd64 -app-id={{.APP_ID}} -app-version={{.VERSION}} -name={{.BINARY}} {{.MAIN}}"
 
   build:darwin:
     desc: Build for macOS amd64 + arm64 natively (requires Xcode CLT)
@@ -176,10 +182,12 @@ tasks:
     vars:
       TAG:
         sh: bash scripts/next-version.sh {{.CLI_ARGS}}
+      VER:
+        sh: bash scripts/next-version.sh {{.CLI_ARGS}} | sed 's/^v//'
     cmds:
       - task: test
       - task: build:all
-        vars: { NEXT_TAG: "{{.TAG}}" }
+        vars: { NEXT_TAG: "{{.TAG}}", VERSION: "{{.VER}}" }
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - task: _gh-release
@@ -199,10 +207,12 @@ tasks:
     vars:
       TAG:
         sh: bash scripts/next-version.sh {{.CLI_ARGS}}
+      VER:
+        sh: bash scripts/next-version.sh {{.CLI_ARGS}} | sed 's/^v//'
     cmds:
       - task: test
       - task: build:all
-        vars: { NEXT_TAG: "{{.TAG}}" }
+        vars: { NEXT_TAG: "{{.TAG}}", VERSION: "{{.VER}}" }
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - |
