@@ -216,15 +216,18 @@ tasks:
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - |
-        gh release create {{.TAG}} \
-          --title "Peeksy {{.TAG}}" \
-          --generate-notes \
-          --draft \
-          fyne-cross/dist/linux-amd64/peeksy.tar.xz#peeksy-linux-amd64.tar.xz \
-          fyne-cross/dist/linux-arm64/peeksy.tar.xz#peeksy-linux-arm64.tar.xz \
-          fyne-cross/dist/windows-amd64/peeksy.zip#peeksy-windows-amd64.zip \
-          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz#peeksy-darwin-amd64.tar.gz \
-          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz#peeksy-darwin-arm64.tar.gz
+          cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
+          cp fyne-cross/dist/linux-arm64/peeksy.tar.xz fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz
+          cp fyne-cross/dist/windows-amd64/peeksy.zip fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip
+          gh release create {{.TAG}} \
+            --title "Peeksy {{.TAG}}" \
+            --generate-notes \
+            --draft \
+            fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+            fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+            fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+            fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
+            fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz
 
   # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -240,14 +243,17 @@ tasks:
     desc: Create public GitHub release and upload all platform archives
     cmds:
       - |
+        cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
+        cp fyne-cross/dist/linux-arm64/peeksy.tar.xz fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz
+        cp fyne-cross/dist/windows-amd64/peeksy.zip fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip
         gh release create {{.TAG}} \
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
-          fyne-cross/dist/linux-amd64/peeksy.tar.xz#peeksy-linux-amd64.tar.xz \
-          fyne-cross/dist/linux-arm64/peeksy.tar.xz#peeksy-linux-arm64.tar.xz \
-          fyne-cross/dist/windows-amd64/peeksy.zip#peeksy-windows-amd64.zip \
-          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz#peeksy-darwin-amd64.tar.gz \
-          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz#peeksy-darwin-arm64.tar.gz
+          fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
+          fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
+          fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
+          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz
 
   # ── Utilities ──────────────────────────────────────────────────────────────
 
