@@ -2,24 +2,26 @@
 # https://taskfile.dev
 #
 # Prerequisites:
-#   - Go  ≥ 1.21          (https://go.dev/dl)
-#   - Task                (brew install go-task/tap/go-task)
-#   - GitHub CLI (gh)     (brew install gh && gh auth login)
+#   - Go  ≥ 1.21                  (https://go.dev/dl)
+#   - Task                        (brew install go-task/tap/go-task)
+#   - Docker Desktop (running)    (https://www.docker.com/products/docker-desktop)
+#   - fyne-cross                  (go install github.com/fyne-io/fyne-cross@latest)
+#   - GitHub CLI (gh)             (brew install gh && gh auth login)
 #
 # ── Quick reference ────────────────────────────────────────────────────────────
 #
 #   task                    build for host OS/arch
 #   task test               run all tests
 #   task lint               go vet
-#   task build:all          cross-compile macOS amd64+arm64 → dist/ (native CGo required)
+#   task build:all          cross-compile all platforms via fyne-cross (requires Docker)
 #
-#   task commit             stage ALL changes & commit (required before release)
-#   task release            auto-bump version, tag, build all, publish GH release
+#   task commit MSG="..."   stage ALL changes & commit (required before release)
+#   task release            auto-bump version, build all, publish GH release
 #   task release -- minor   same but force minor bump
 #   task release -- major   same but force major bump
 #   task release:draft      same as release but creates a draft release
 #
-#   task clean              remove dist/ and local binary
+#   task clean              remove fyne-cross/ output and local binary
 
 version: "3"
 
@@ -28,8 +30,9 @@ version: "3"
 vars:
   BINARY: peeksy
   MAIN: ./cmd/peeksy
-  DIST: dist
   MODULE: github.com/tiroq/peeksy
+  APP_ID: github.com.tiroq.peeksy
+  FYNE_CROSS: "{{.HOME}}/go/bin/fyne-cross"
 
   # Next semver tag — computed by scripts/next-version.sh.
   # Pass an optional bump level via CLI_ARGS, e.g.: task release -- minor
@@ -41,12 +44,6 @@ vars:
     sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
   BUILD_DATE:
     sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
-
-  LDFLAGS: >-
-    -s -w
-    -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}}
-    -X {{.MODULE}}/internal/version.Commit={{.COMMIT}}
-    -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}
 
 # ── Default ────────────────────────────────────────────────────────────────────
 
@@ -61,66 +58,43 @@ tasks:
   build:
     desc: Build peeksy for the current host platform
     cmds:
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} {{.MAIN}}
+      - go build -ldflags "-s -w -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}} -X {{.MODULE}}/internal/version.Commit={{.COMMIT}} -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}" -o {{.BINARY}} {{.MAIN}}
     sources:
       - "**/*.go"
     generates:
       - "{{.BINARY}}"
 
   build:all:
-    desc: Build peeksy for macOS amd64 and arm64 (CGo/Fyne requires native build)
+    desc: Cross-compile for all platforms via fyne-cross (requires Docker)
     cmds:
-      - task: build:darwin-amd64
-      - task: build:darwin-arm64
-  build:linux-amd64:
-    desc: Build for Linux/amd64
-    env:
-      GOOS: linux
-      GOARCH: amd64
-      CGO_ENABLED: "0"
-    cmds:
-      - mkdir -p {{.DIST}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.DIST}}/{{.BINARY}}-linux-amd64 {{.MAIN}}
+      - task: build:linux
+      - task: build:windows
+      - task: build:darwin
 
-  build:linux-arm64:
-    desc: Build for Linux/arm64
-    env:
-      GOOS: linux
-      GOARCH: arm64
-      CGO_ENABLED: "0"
+  build:linux:
+    desc: Build for Linux amd64 + arm64 via fyne-cross (requires Docker)
     cmds:
-      - mkdir -p {{.DIST}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.DIST}}/{{.BINARY}}-linux-arm64 {{.MAIN}}
+      - "{{.FYNE_CROSS}} linux -arch=amd64,arm64 -app-id={{.APP_ID}} -app-version={{trimPrefix .NEXT_TAG \"v\"}} -name={{.BINARY}} {{.MAIN}}"
 
-  build:darwin-amd64:
-    desc: Build for macOS/amd64 (Intel)
-    env:
-      GOOS: darwin
-      GOARCH: amd64
-      CGO_ENABLED: "1"
+  build:windows:
+    desc: Build for Windows amd64 via fyne-cross (requires Docker)
     cmds:
-      - mkdir -p {{.DIST}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.DIST}}/{{.BINARY}}-darwin-amd64 {{.MAIN}}
+      - "{{.FYNE_CROSS}} windows -arch=amd64 -app-id={{.APP_ID}} -app-version={{trimPrefix .NEXT_TAG \"v\"}} -name={{.BINARY}} {{.MAIN}}"
 
-  build:darwin-arm64:
-    desc: Build for macOS/arm64 (Apple Silicon)
-    env:
-      GOOS: darwin
-      GOARCH: arm64
-      CGO_ENABLED: "1"
+  build:darwin:
+    desc: Build for macOS amd64 + arm64 natively (requires Xcode CLT)
     cmds:
-      - mkdir -p {{.DIST}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.DIST}}/{{.BINARY}}-darwin-arm64 {{.MAIN}}
-
-  build:windows-amd64:
-    desc: Build for Windows/amd64
-    env:
-      GOOS: windows
-      GOARCH: amd64
-      CGO_ENABLED: "0"
-    cmds:
-      - mkdir -p {{.DIST}}
-      - go build -ldflags "{{.LDFLAGS}}" -o {{.DIST}}/{{.BINARY}}-windows-amd64.exe {{.MAIN}}
+      - mkdir -p fyne-cross/dist/darwin-amd64 fyne-cross/dist/darwin-arm64
+      - GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build
+          -ldflags "-s -w -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}} -X {{.MODULE}}/internal/version.Commit={{.COMMIT}} -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}"
+          -o fyne-cross/bin/darwin-amd64/{{.BINARY}} {{.MAIN}}
+      - tar czf fyne-cross/dist/darwin-amd64/{{.BINARY}}-darwin-amd64.tar.gz
+          -C fyne-cross/bin/darwin-amd64 {{.BINARY}}
+      - GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build
+          -ldflags "-s -w -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}} -X {{.MODULE}}/internal/version.Commit={{.COMMIT}} -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}"
+          -o fyne-cross/bin/darwin-arm64/{{.BINARY}} {{.MAIN}}
+      - tar czf fyne-cross/dist/darwin-arm64/{{.BINARY}}-darwin-arm64.tar.gz
+          -C fyne-cross/bin/darwin-arm64 {{.BINARY}}
 
   # ── Test & Lint ────────────────────────────────────────────────────────────
 
@@ -179,10 +153,9 @@ tasks:
   #   1. Verify working tree is clean (no uncommitted changes)
   #   2. Compute next version from conventional commits since last tag
   #   3. Run tests
-  #   4. Cross-compile all platforms
-  #   5. Archive binaries
-  #   6. Create annotated git tag & push
-  #   7. Create GitHub release with assets
+  #   4. Cross-compile all platforms (fyne-cross for Linux/Windows, native for Darwin)
+  #   5. Create annotated git tag & push
+  #   6. Create GitHub release with all artifacts
   #
   # Override bump level: task release -- minor | major | patch
   #
@@ -199,7 +172,7 @@ tasks:
       - sh: "git diff --quiet && git diff --cached --quiet"
         msg: >-
           Working tree has uncommitted changes.
-          Run: task commit -- "type: your message"
+          Run: task commit MSG="type: your message"
     vars:
       TAG:
         sh: bash scripts/next-version.sh {{.CLI_ARGS}}
@@ -207,8 +180,6 @@ tasks:
       - task: test
       - task: build:all
         vars: { NEXT_TAG: "{{.TAG}}" }
-      - task: _archive
-        vars: { TAG: "{{.TAG}}" }
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - task: _gh-release
@@ -224,7 +195,7 @@ tasks:
       - sh: "git diff --quiet && git diff --cached --quiet"
         msg: >-
           Working tree has uncommitted changes.
-          Run: task commit -- "type: your message"
+          Run: task commit MSG="type: your message"
     vars:
       TAG:
         sh: bash scripts/next-version.sh {{.CLI_ARGS}}
@@ -232,8 +203,6 @@ tasks:
       - task: test
       - task: build:all
         vars: { NEXT_TAG: "{{.TAG}}" }
-      - task: _archive
-        vars: { TAG: "{{.TAG}}" }
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - |
@@ -241,20 +210,13 @@ tasks:
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
           --draft \
-          {{.DIST}}/peeksy-darwin-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz
+          fyne-cross/dist/linux-amd64/peeksy.tar.xz#peeksy-linux-amd64.tar.xz \
+          fyne-cross/dist/linux-arm64/peeksy.tar.xz#peeksy-linux-arm64.tar.xz \
+          fyne-cross/dist/windows-amd64/peeksy.zip#peeksy-windows-amd64.zip \
+          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz#peeksy-darwin-amd64.tar.gz \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz#peeksy-darwin-arm64.tar.gz
 
   # ── Internal helpers ──────────────────────────────────────────────────────
-
-  _archive:
-    internal: true
-    desc: Compress dist/ binaries into release archives
-    cmds:
-      - |
-        cd {{.DIST}}
-        for bin in peeksy-darwin-amd64 peeksy-darwin-arm64; do
-          tar czf "${bin}-{{.TAG}}.tar.gz" "${bin}"
-        done
 
   _tag-and-push:
     internal: true
@@ -265,21 +227,24 @@ tasks:
 
   _gh-release:
     internal: true
-    desc: Create public GitHub release and upload archives
+    desc: Create public GitHub release and upload all platform archives
     cmds:
       - |
         gh release create {{.TAG}} \
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
-          {{.DIST}}/peeksy-darwin-amd64-{{.TAG}}.tar.gz \
-          {{.DIST}}/peeksy-darwin-arm64-{{.TAG}}.tar.gz
+          fyne-cross/dist/linux-amd64/peeksy.tar.xz#peeksy-linux-amd64.tar.xz \
+          fyne-cross/dist/linux-arm64/peeksy.tar.xz#peeksy-linux-arm64.tar.xz \
+          fyne-cross/dist/windows-amd64/peeksy.zip#peeksy-windows-amd64.zip \
+          fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz#peeksy-darwin-amd64.tar.gz \
+          fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz#peeksy-darwin-arm64.tar.gz
 
   # ── Utilities ──────────────────────────────────────────────────────────────
 
   clean:
-    desc: Remove dist/ directory and local binary
+    desc: Remove fyne-cross/ build output and local binary
     cmds:
-      - rm -rf {{.DIST}}
+      - rm -rf fyne-cross/
       - rm -f {{.BINARY}}
 
   run:
