@@ -34,3 +34,7 @@ go.work.sum
 # Built binaries
 /sender
 /receiver
+/peeksy
+
+# Release artifacts
+/dist/

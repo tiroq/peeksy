@@ -1,6 +1,7 @@
 # peeksy
 
-A two-part Go GUI application for transferring files between machines using QR codes.
+A Go GUI application for transferring files between machines using QR codes.
+Sender and Receiver run as two tabs inside a single binary.
 
 ## Overview
 
@@ -21,38 +22,46 @@ Each QR code payload is a compact JSON object:
 
 ## Building
 
-```sh
-# Build sender
-go build -o peeksy-sender ./cmd/sender
+### With Task (recommended)
 
-# Build receiver
-go build -o peeksy-receiver ./cmd/receiver
+```sh
+# Build for current platform
+task
+
+# Cross-compile for all platforms → dist/
+task build:all
+
+# Build, tag v1.0.0, and publish a GitHub release
+task tag -- v1.0.0
+task release
 ```
 
+### With plain Go
+
+```sh
+go build -o peeksy ./cmd/peeksy
+```
 ## Usage
 
-### Sender (`cmd/sender`)
+Launch `peeksy`. The window opens with two tabs at the top:
 
-1. Launch `peeksy-sender`.
-2. Click **Select File…** and choose the file to transfer.
-3. The first QR code is displayed immediately.
-4. Click **Next** to advance to the next chunk, or **Prev** to go back.
-5. Use **Resend Part…** to jump to any specific chunk number (e.g. when the receiver reports a missing part).
-6. The sender also starts an HTTP API on port **8765** that the receiver can use to automatically advance to the next part.
+### Send tab
 
-![Peeksy Sender](https://github.com/user-attachments/assets/2c1f07f8-bcaf-4f4c-be08-a7cc5e5d041f)
+1. Click **Open File** and choose the file to transfer.
+2. The first QR code is displayed immediately.
+3. Click **Next** / **Prev** to navigate chunks.
+4. Use **Resend Part…** to jump to any specific chunk (e.g. when the receiver reports a missing part).
+5. The sender starts an HTTP API on port **8765** used by the Receive tab for auto-advance.
 
-### Receiver (`cmd/receiver`)
+### Receive tab
 
-1. Launch `peeksy-receiver`.
-2. Click **Browse…** to choose where the reassembled file will be saved.
-3. Set the **Sender** address (default: `http://127.0.0.1:8765`).
-4. Enter the screen **region** (X, Y, W, H) that contains the sender's QR code.
-5. Click **Capture & Read QR** to scan one frame, or **Start Auto-Capture** to scan automatically every 2 seconds.
-6. Progress is shown in real time (received parts, missing parts).
-7. If a part is missing use **Request Resend** — the receiver tells the sender to display the requested part.
-8. Once all parts are received click **Save File**.
-
+1. Click **Browse…** to choose where the reassembled file will be saved.
+2. Set the **Sender** address (default: `http://127.0.0.1:8765`).
+3. Enter the screen **region** (X, Y, W, H) containing the sender's QR code.
+4. Click **Capture QR** to scan one frame, or **Auto-Capture** to scan every 2 s.
+5. Progress is shown in real time (received parts, missing parts).
+6. Use **Request Resend** to ask the sender to re-display a missing part.
+7. Once all parts are received click **Save File**.
 ## HTTP API (Sender)
 
 The sender listens on `:8765` and accepts:
@@ -69,15 +78,20 @@ The sender listens on `:8765` and accepts:
 
 ```
 ├── cmd/
-│   ├── sender/main.go    – Sender GUI + HTTP server
-│   └── receiver/main.go  – Receiver GUI + screen capture
+│   ├── peeksy/main.go    – Unified binary (Send + Receive tabs)
+│   ├── sender/main.go    – Standalone sender (legacy)
+│   └── receiver/main.go  – Standalone receiver (legacy)
 ├── internal/
 │   ├── chunker/          – File splitting & assembly
-│   └── protocol/         – QR payload encoding/decoding
+│   ├── protocol/         – QR payload encoding/decoding
+│   └── ui/               – Shared theme & widgets
+├── Taskfile.yml          – Build / release automation
 ```
 
 ## Running Tests
 
 ```sh
-go test ./internal/...
+task test
+# or
+go test ./...
 ```
