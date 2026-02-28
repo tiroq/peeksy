@@ -30,17 +30,19 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	qrlib "github.com/skip2/go-qrcode"
 
 	"github.com/tiroq/peeksy/internal/chunker"
 	"github.com/tiroq/peeksy/internal/protocol"
+	ui "github.com/tiroq/peeksy/internal/ui"
 )
 
 const (
 	senderPort  = 8765
-	qrPixelSize = 400
+	qrPixelSize = 380
 )
 
 // senderState holds the mutable state shared between the GUI and HTTP server.
@@ -114,30 +116,74 @@ func main() {
 	state := &senderState{}
 
 	a := app.New()
-	w := a.NewWindow("Peeksy – Sender")
-	w.Resize(fyne.NewSize(500, 600))
+	a.Settings().SetTheme(&ui.ObsidianTheme{})
+	w := a.NewWindow("Peeksy — Sender")
+	w.Resize(fyne.NewSize(480, 680))
 
-	// ── widgets ──────────────────────────────────────────────────────────────
+	// ── placeholders ─────────────────────────────────────────────────────────
 
-	fileLabel := widget.NewLabel("No file selected")
-
-	// placeholder grey QR image
 	placeholder := image.NewGray(image.Rect(0, 0, qrPixelSize, qrPixelSize))
 	qrImg := canvas.NewImageFromImage(placeholder)
 	qrImg.FillMode = canvas.ImageFillContain
-	qrImg.SetMinSize(fyne.NewSize(float32(qrPixelSize), float32(qrPixelSize)))
+	qrImg.SetMinSize(fyne.NewSize(300, 300))
 
-	partLabel := widget.NewLabel("")
-	partLabel.Alignment = fyne.TextAlignCenter
-	partLabel.TextStyle = fyne.TextStyle{Bold: true}
+	// ── part indicator ───────────────────────────────────────────────────────
 
-	prevBtn := widget.NewButtonWithIcon("Prev", theme.NavigateBackIcon(), nil)
-	nextBtn := widget.NewButtonWithIcon("Next", theme.NavigateNextIcon(), nil)
-	resendBtn := widget.NewButtonWithIcon("Resend Part…", theme.WarningIcon(), nil)
+	partText := canvas.NewText("Select a file to begin", ui.ColorFgMuted)
+	partText.TextSize = 13
+	partText.TextStyle = fyne.TextStyle{Bold: true}
+	partTextContainer := container.NewCenter(partText)
 
+	// ── file info row ────────────────────────────────────────────────────────
+
+	fileNameText := canvas.NewText("No file selected", ui.ColorFgMuted)
+	fileNameText.TextSize = 12
+	fileNameText.TextStyle = fyne.TextStyle{}
+
+	fileInfoBg := canvas.NewRectangle(ui.ColorSurface3)
+	fileInfoBg.CornerRadius = 8
+	fileInfoBg.StrokeColor = ui.ColorSeparator
+	fileInfoBg.StrokeWidth = 1
+
+	folderIcon := widget.NewIcon(theme.FolderIcon())
+	folderIcon.Resize(fyne.NewSize(16, 16))
+
+	fileInfoRow := container.NewStack(
+		fileInfoBg,
+		container.New(layout.NewCustomPaddedLayout(8, 8, 10, 10),
+			container.NewBorder(nil, nil, folderIcon, nil,
+				container.New(layout.NewCustomPaddedLayout(0, 0, 6, 0), fileNameText),
+			),
+		),
+	)
+
+	// ── navigation buttons ───────────────────────────────────────────────────
+
+	prevBtn := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), nil)
+	prevBtn.Importance = widget.LowImportance
 	prevBtn.Disable()
+
+	nextBtn := widget.NewButtonWithIcon("Next", theme.NavigateNextIcon(), nil)
+	nextBtn.Importance = widget.HighImportance
 	nextBtn.Disable()
+
+	resendBtn := widget.NewButtonWithIcon("Resend Part…", theme.WarningIcon(), nil)
+	resendBtn.Importance = widget.MediumImportance
 	resendBtn.Disable()
+
+	selectBtn := widget.NewButtonWithIcon("Open File", theme.FolderOpenIcon(), nil)
+	selectBtn.Importance = widget.HighImportance
+
+	// ── HTTP status badge ────────────────────────────────────────────────────
+
+	apiDot := canvas.NewCircle(ui.ColorSuccess)
+	apiDot.Resize(fyne.NewSize(6, 6))
+	apiText := canvas.NewText(fmt.Sprintf("API :  %d", senderPort), ui.ColorFgMuted)
+	apiText.TextSize = 11
+	apiStatusRow := container.NewHBox(
+		container.NewCenter(apiDot),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 4, 0), apiText),
+	)
 
 	// ── helpers ───────────────────────────────────────────────────────────────
 
@@ -160,7 +206,9 @@ func main() {
 		canvas.Refresh(qrImg)
 
 		total := state.count()
-		partLabel.SetText(fmt.Sprintf("Part %d of %d", c.Index, total))
+		partText.Text = fmt.Sprintf("Part %d of %d", c.Index, total)
+		partText.Color = ui.ColorPrimary
+		canvas.Refresh(partText)
 
 		cur := state.getCurrent()
 		if cur > 0 {
@@ -192,7 +240,7 @@ func main() {
 		}
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder(fmt.Sprintf("1 – %d", total))
-		d := dialog.NewForm("Resend Part", "Show", "Cancel",
+		d := dialog.NewForm("Jump to Part", "Show", "Cancel",
 			[]*widget.FormItem{
 				widget.NewFormItem("Part number", entry),
 			},
@@ -213,7 +261,7 @@ func main() {
 
 	// ── file selection ────────────────────────────────────────────────────────
 
-	selectBtn := widget.NewButtonWithIcon("Select File…", theme.FolderOpenIcon(), func() {
+	selectBtn.OnTapped = func() {
 		fd := dialog.NewFileOpen(func(f fyne.URIReadCloser, err error) {
 			if err != nil || f == nil {
 				return
@@ -224,13 +272,16 @@ func main() {
 				dialog.ShowError(err, w)
 				return
 			}
-			fileLabel.SetText(filepath.Base(path))
+			base := filepath.Base(path)
+			fileNameText.Text = base
+			fileNameText.Color = ui.ColorForeground
+			canvas.Refresh(fileNameText)
 			refreshQR()
 			nextBtn.Enable()
 			resendBtn.Enable()
 		}, w)
 		fd.Show()
-	})
+	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────────
 
@@ -238,16 +289,64 @@ func main() {
 
 	// ── layout ────────────────────────────────────────────────────────────────
 
-	topBar := container.NewHBox(selectBtn, fileLabel)
-	navBar := container.NewHBox(prevBtn, nextBtn, resendBtn)
-	content := container.NewVBox(
-		topBar,
-		container.NewCenter(qrImg),
-		container.NewCenter(partLabel),
-		container.NewCenter(navBar),
+	// Header
+	header := ui.AppHeader("peeksy", "sender", ui.ColorPrimary)
+
+	// QR display
+	qrFrame := ui.QRFrame(qrImg)
+	qrSection := container.NewCenter(qrFrame)
+
+	// Part badge + text row (under QR)
+	qrInfoSection := container.NewCenter(partTextContainer)
+
+	// Navigation row
+	prevContainer := container.NewCenter(prevBtn)
+
+	navRow := container.NewBorder(nil, nil, prevContainer, nil,
+		container.NewHBox(layout.NewSpacer(), resendBtn, nextBtn),
 	)
 
-	w.SetContent(content)
+	// QR card (frame + info + nav)
+	qrCard := ui.Card(
+		container.NewVBox(
+			qrSection,
+			container.New(layout.NewCustomPaddedLayout(6, 6, 0, 0), qrInfoSection),
+			ui.Divider(),
+			navRow,
+		),
+	)
+
+	// File info card
+	fileCard := ui.CardWithTitle("FILE", fileInfoRow)
+
+	// Bottom toolbar
+	selectRow := container.NewHBox(layout.NewSpacer(), selectBtn)
+
+	// API status
+	apiRow := container.NewHBox(layout.NewSpacer(), apiStatusRow)
+
+	// Main scroll content
+	content := container.NewVBox(
+		container.New(layout.NewCustomPaddedLayout(0, 0, 0, 0), header),
+		container.New(layout.NewCustomPaddedLayout(12, 0, 12, 12),
+			container.NewVBox(
+				fileCard,
+				container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), qrCard),
+				container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), selectRow),
+				container.New(layout.NewCustomPaddedLayout(4, 0, 0, 0), apiRow),
+			),
+		),
+	)
+
+	// App background
+	bgRect := canvas.NewRectangle(ui.ColorBackground)
+
+	root := container.NewStack(
+		bgRect,
+		container.NewVBox(content),
+	)
+
+	w.SetContent(root)
 	w.ShowAndRun()
 }
 
@@ -323,3 +422,4 @@ func startHTTPServer(state *senderState) {
 		log.Printf("HTTP server error: %v", err)
 	}
 }
+

@@ -32,16 +32,19 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	screenshot "github.com/kbinani/screenshot"
 	gozxing "github.com/makiuchi-d/gozxing"
 	gozxingqr "github.com/makiuchi-d/gozxing/qrcode"
-	screenshot "github.com/kbinani/screenshot"
 
 	"github.com/tiroq/peeksy/internal/chunker"
 	"github.com/tiroq/peeksy/internal/protocol"
+	ui "github.com/tiroq/peeksy/internal/ui"
 )
 
 const defaultSenderAddr = "http://127.0.0.1:8765"
@@ -91,7 +94,6 @@ func (s *receiverState) complete() bool {
 // captureRegion takes a screenshot of the rectangle (rx,ry)-(rx+rw, ry+rh).
 func captureRegion(rx, ry, rw, rh int) (image.Image, error) {
 	bounds := screenshot.GetDisplayBounds(0)
-	// Clamp region to display bounds.
 	x := rx
 	y := ry
 	w := rw
@@ -146,17 +148,40 @@ func main() {
 	state := newReceiverState()
 
 	a := app.New()
-	w := a.NewWindow("Peeksy – Receiver")
-	w.Resize(fyne.NewSize(520, 580))
+	a.Settings().SetTheme(&ui.ObsidianTheme{})
+	w := a.NewWindow("Peeksy — Receiver")
+	w.Resize(fyne.NewSize(500, 680))
 
 	// ── widgets ──────────────────────────────────────────────────────────────
 
-	outputLabel := widget.NewLabel("(none)")
+	// Output folder
+	outputText := canvas.NewText("No folder selected", ui.ColorFgMuted)
+	outputText.TextSize = 12
 
+	outputBg := canvas.NewRectangle(ui.ColorSurface3)
+	outputBg.CornerRadius = 8
+	outputBg.StrokeColor = ui.ColorSeparator
+	outputBg.StrokeWidth = 1
+
+	folderIcon := widget.NewIcon(theme.FolderIcon())
+	outputRow := container.NewStack(
+		outputBg,
+		container.New(layout.NewCustomPaddedLayout(8, 8, 10, 10),
+			container.NewBorder(nil, nil, folderIcon, nil,
+				container.New(layout.NewCustomPaddedLayout(0, 0, 6, 0), outputText),
+			),
+		),
+	)
+
+	browseBtn := widget.NewButtonWithIcon("Browse…", theme.FolderOpenIcon(), nil)
+	browseBtn.Importance = widget.MediumImportance
+
+	// Sender address
 	senderEntry := widget.NewEntry()
 	senderEntry.SetText(defaultSenderAddr)
 	senderEntry.SetPlaceHolder("http://127.0.0.1:8765")
 
+	// Region entries
 	rxEntry := widget.NewEntry()
 	rxEntry.SetText("0")
 	ryEntry := widget.NewEntry()
@@ -166,20 +191,51 @@ func main() {
 	rhEntry := widget.NewEntry()
 	rhEntry.SetText("400")
 
-	progressLabel := widget.NewLabel("No parts received yet")
-	receivedLabel := widget.NewLabel("Received: –")
-	missingLabel := widget.NewLabel("Missing: –")
+	// Progress tracker
+	progressTracker := ui.NewProgressTracker()
 
-	captureBtn := widget.NewButtonWithIcon("Capture & Read QR", theme.MediaPhotoIcon(), nil)
-	autoBtn := widget.NewButtonWithIcon("Start Auto-Capture", theme.MediaPlayIcon(), nil)
-	stopBtn := widget.NewButtonWithIcon("Stop Auto-Capture", theme.MediaStopIcon(), nil)
-	resendBtn := widget.NewButtonWithIcon("Request Resend", theme.WarningIcon(), nil)
-	saveBtn := widget.NewButtonWithIcon("Save File", theme.DocumentSaveIcon(), nil)
+	// Detail labels (received/missing)
+	receivedLabel := canvas.NewText("Received: –", ui.ColorFgMuted)
+	receivedLabel.TextSize = 11
+	missingLabel := canvas.NewText("Missing: –", ui.ColorFgMuted)
+	missingLabel.TextSize = 11
 
+	// Status indicator text
+	statusText := canvas.NewText("Ready", ui.ColorFgMuted)
+	statusText.TextSize = 11
+	statusBg := canvas.NewRectangle(ui.ColorSurface3)
+	statusBg.CornerRadius = 6
+	statusRow := container.NewStack(
+		statusBg,
+		container.New(layout.NewCustomPaddedLayout(5, 5, 8, 8), statusText),
+	)
+
+	// Action buttons
+	captureBtn := widget.NewButtonWithIcon("Capture QR", theme.MediaPhotoIcon(), nil)
+	captureBtn.Importance = widget.HighImportance
+
+	autoBtn := widget.NewButtonWithIcon("Auto-Capture", theme.MediaPlayIcon(), nil)
+	autoBtn.Importance = widget.MediumImportance
+
+	stopBtn := widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), nil)
+	stopBtn.Importance = widget.LowImportance
 	stopBtn.Disable()
+
+	resendBtn := widget.NewButtonWithIcon("Request Resend", theme.WarningIcon(), nil)
+	resendBtn.Importance = widget.MediumImportance
+
+	saveBtn := widget.NewButtonWithIcon("Save File", theme.DocumentSaveIcon(), nil)
+	saveBtn.Importance = widget.HighImportance
 	saveBtn.Disable()
 
 	// ── helpers ───────────────────────────────────────────────────────────────
+
+	setStatus := func(msg string, col fyne.ThemeColorName) {
+		statusText.Text = msg
+		statusText.Color = theme.Color(col)
+		canvas.Refresh(statusText)
+		statusBg.Refresh()
+	}
 
 	parseRegion := func() (int, int, int, int, error) {
 		rx, err := strconv.Atoi(strings.TrimSpace(rxEntry.Text))
@@ -207,35 +263,44 @@ func main() {
 	refreshProgress := func() {
 		cks, total := state.snapshot()
 		count := len(cks)
+		progressTracker.Update(count, total)
+
 		if total == 0 {
-			progressLabel.SetText("No parts received yet")
-			receivedLabel.SetText("Received: –")
-			missingLabel.SetText("Missing: –")
+			receivedLabel.Text = "Received: –"
+			receivedLabel.Color = ui.ColorFgMuted
+			missingLabel.Text = "Missing: –"
+			missingLabel.Color = ui.ColorFgMuted
 			saveBtn.Disable()
+			canvas.Refresh(receivedLabel)
+			canvas.Refresh(missingLabel)
 			return
 		}
-
-		progressLabel.SetText(fmt.Sprintf("Progress: %d / %d parts", count, total))
 
 		sort.Slice(cks, func(i, j int) bool { return cks[i].Index < cks[j].Index })
 		idxStr := make([]string, len(cks))
 		for i, c := range cks {
 			idxStr[i] = strconv.Itoa(c.Index)
 		}
-		receivedLabel.SetText("Received: " + strings.Join(idxStr, ", "))
+		receivedLabel.Text = "Received: " + strings.Join(idxStr, ", ")
+		receivedLabel.Color = ui.ColorForeground
 
 		miss := chunker.MissingIndices(cks, total)
 		if len(miss) == 0 {
-			missingLabel.SetText("Missing: none ✓")
+			missingLabel.Text = "Missing: none ✓"
+			missingLabel.Color = ui.ColorSuccess
 			saveBtn.Enable()
+			setStatus("Complete — all parts received", theme.ColorNameSuccess)
 		} else {
 			missStr := make([]string, len(miss))
 			for i, m := range miss {
 				missStr[i] = strconv.Itoa(m)
 			}
-			missingLabel.SetText("Missing: " + strings.Join(missStr, ", "))
+			missingLabel.Text = "Missing: " + strings.Join(missStr, ", ")
+			missingLabel.Color = ui.ColorWarning
 			saveBtn.Disable()
 		}
+		canvas.Refresh(receivedLabel)
+		canvas.Refresh(missingLabel)
 	}
 
 	captureOnce := func() error {
@@ -257,6 +322,7 @@ func main() {
 		}
 		state.addChunk(c)
 		refreshProgress()
+		setStatus(fmt.Sprintf("Captured part %d", c.Index), theme.ColorNamePrimary)
 
 		// Tell sender to advance to the next part.
 		senderAddr := strings.TrimRight(senderEntry.Text, "/")
@@ -280,6 +346,7 @@ func main() {
 		captureBtn.Disable()
 		autoBtn.Disable()
 		stopBtn.Enable()
+		setStatus("Auto-capture running…", theme.ColorNamePrimary)
 
 		go func() {
 			ticker := time.NewTicker(2 * time.Second)
@@ -311,12 +378,14 @@ func main() {
 		captureBtn.Enable()
 		autoBtn.Enable()
 		stopBtn.Disable()
+		setStatus("Auto-capture stopped", theme.ColorNameForeground)
 	}
 
 	// ── button handlers ───────────────────────────────────────────────────────
 
 	captureBtn.OnTapped = func() {
 		if err := captureOnce(); err != nil {
+			setStatus("Error: "+err.Error(), theme.ColorNameError)
 			dialog.ShowError(err, w)
 		}
 	}
@@ -335,7 +404,7 @@ func main() {
 		for i, m := range miss {
 			missStr[i] = strconv.Itoa(m)
 		}
-		label := widget.NewLabel("Missing parts: " + strings.Join(missStr, ", "))
+		label := widget.NewLabel("Missing: " + strings.Join(missStr, ", "))
 
 		d := dialog.NewForm("Request Resend", "Request", "Cancel",
 			[]*widget.FormItem{
@@ -384,47 +453,87 @@ func main() {
 
 	// ── browse output folder ──────────────────────────────────────────────────
 
-	browseBtn := widget.NewButtonWithIcon("Browse…", theme.FolderOpenIcon(), func() {
+	browseBtn.OnTapped = func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil || uri == nil {
 				return
 			}
 			state.outputDir = uri.Path()
-			outputLabel.SetText(uri.Path())
+			outputText.Text = uri.Path()
+			outputText.Color = ui.ColorForeground
+			canvas.Refresh(outputText)
 		}, w)
-	})
+	}
 
 	// ── layout ────────────────────────────────────────────────────────────────
 
-	outputRow := container.NewBorder(nil, nil, widget.NewLabel("Save to:"), browseBtn, outputLabel)
-	senderRow := container.NewBorder(nil, nil, widget.NewLabel("Sender:"), nil, senderEntry)
+	// Header
+	header := ui.AppHeader("peeksy", "receiver", ui.ColorAccent)
 
-	regionRow := container.NewGridWithColumns(4,
-		container.NewVBox(widget.NewLabel("X"), rxEntry),
-		container.NewVBox(widget.NewLabel("Y"), ryEntry),
-		container.NewVBox(widget.NewLabel("W"), rwEntry),
-		container.NewVBox(widget.NewLabel("H"), rhEntry),
+	// Output folder card
+	outputSaveRow := container.NewBorder(nil, nil, nil, browseBtn, outputRow)
+	outputCard := ui.CardWithTitle("OUTPUT FOLDER", outputSaveRow)
+
+	// Connection card
+	connCard := ui.CardWithTitle("SENDER CONNECTION",
+		ui.FieldRow("Address", senderEntry),
 	)
 
+	// Region card – compact 4-column grid
+	regionGrid := container.NewGridWithColumns(4,
+		ui.CoordField("X", rxEntry),
+		ui.CoordField("Y", ryEntry),
+		ui.CoordField("W", rwEntry),
+		ui.CoordField("H", rhEntry),
+	)
+	regionCard := ui.CardWithTitle("SCREEN REGION (px)", regionGrid)
+
+	// Capture buttons row
 	captureRow := container.NewHBox(captureBtn, autoBtn, stopBtn)
 
-	content := container.NewVBox(
-		widget.NewSeparator(),
-		outputRow,
-		senderRow,
-		widget.NewSeparator(),
-		widget.NewLabel("Screen region to capture:"),
-		regionRow,
-		widget.NewSeparator(),
-		captureRow,
-		widget.NewSeparator(),
-		progressLabel,
-		receivedLabel,
-		missingLabel,
-		widget.NewSeparator(),
+	// Progress card
+	detailsCol := container.NewVBox(receivedLabel, missingLabel)
+	progressContent := container.NewVBox(
+		progressTracker,
+		container.New(layout.NewCustomPaddedLayout(6, 0, 0, 0), detailsCol),
+	)
+	progressCard := ui.CardWithTitle("PROGRESS", progressContent)
+
+	// Status row
+	statusLine := container.NewBorder(nil, nil, nil, nil, statusRow)
+
+	// Actions row
+	actionsRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(resendBtn, saveBtn),
 	)
 
-	w.SetContent(container.NewPadded(content))
+	// Main body
+	body := container.NewVBox(
+		outputCard,
+		container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), connCard),
+		container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), regionCard),
+		container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0),
+			ui.Card(
+				container.NewVBox(captureRow, statusLine),
+			),
+		),
+		container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), progressCard),
+		container.New(layout.NewCustomPaddedLayout(8, 0, 0, 0), actionsRow),
+	)
+
+	// App background
+	bgRect := canvas.NewRectangle(ui.ColorBackground)
+
+	content := container.NewVBox(
+		container.New(layout.NewCustomPaddedLayout(0, 0, 0, 0), header),
+		container.New(layout.NewCustomPaddedLayout(12, 12, 12, 12), body),
+	)
+
+	root := container.NewStack(
+		bgRect,
+		container.NewVScroll(content),
+	)
+
+	w.SetContent(root)
 	w.ShowAndRun()
 }
