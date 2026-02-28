@@ -190,6 +190,7 @@ tasks:
       - task: build:all
         vars: { NEXT_TAG: "{{.TAG}}", VERSION: "{{.VER}}" }
       - task: _sign-artifacts
+        vars: { GPG_KEY: "{{.GPG_KEY}}" }
       - task: _tag-and-push
         vars: { TAG: "{{.TAG}}" }
       - task: _gh-release
@@ -255,16 +256,21 @@ tasks:
 
   _sign-artifacts:
     internal: true
-    desc: Create GPG detached signatures (.asc) for all release artifacts
+    desc: Rename fyne-cross artifacts and create GPG detached signatures (.asc)
+    vars:
+      KEY: '{{default "68BEBD1686D509D7" .GPG_KEY}}'
     cmds:
       - |
+        cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
+        cp fyne-cross/dist/linux-arm64/peeksy.tar.xz fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz
+        cp fyne-cross/dist/windows-amd64/peeksy.zip fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip
         for f in \
           fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz \
           fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz \
           fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip \
           fyne-cross/dist/darwin-amd64/peeksy-darwin-amd64.tar.gz \
           fyne-cross/dist/darwin-arm64/peeksy-darwin-arm64.tar.gz; do
-          gpg --batch --yes --local-user {{.GPG_KEY}} --detach-sign --armor "$f"
+          gpg --batch --yes --local-user {{.KEY}} --detach-sign --armor "$f"
         done
 
   _gh-release:
@@ -272,9 +278,6 @@ tasks:
     desc: Create public GitHub release and upload all platform archives + signatures
     cmds:
       - |
-        cp fyne-cross/dist/linux-amd64/peeksy.tar.xz fyne-cross/dist/linux-amd64/peeksy-linux-amd64.tar.xz
-        cp fyne-cross/dist/linux-arm64/peeksy.tar.xz fyne-cross/dist/linux-arm64/peeksy-linux-arm64.tar.xz
-        cp fyne-cross/dist/windows-amd64/peeksy.zip fyne-cross/dist/windows-amd64/peeksy-windows-amd64.zip
         gh release create {{.TAG}} \
           --title "Peeksy {{.TAG}}" \
           --generate-notes \
