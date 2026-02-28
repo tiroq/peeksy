@@ -95,3 +95,33 @@ task test
 # or
 go test ./...
 ```
+
+## macOS Gatekeeper
+
+macOS will block the app on first launch with a "cannot be verified" warning because
+Peeksy is not notarized through Apple's Developer Program.
+
+**Quick fix** — remove the quarantine flag after downloading:
+
+```sh
+xattr -dr com.apple.quarantine peeksy
+```
+
+Then double-click or run `./peeksy` normally.
+
+The darwin release binaries are ad-hoc codesigned (`codesign --sign -`) so they run
+without the warning on the machine that built them. Downloaded copies need the
+`xattr` step above.
+
+## Verifying Release Signatures
+
+Each release ships a GPG detached signature (`.asc`) alongside every binary.
+Import the public key once, then verify any artifact:
+
+```sh
+# Import the public key (included in the repo)
+gpg --import peeksy-releases.asc
+
+# Verify a downloaded binary
+gpg --verify peeksy-darwin-arm64.tar.gz.asc peeksy-darwin-arm64.tar.gz
+```

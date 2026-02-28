@@ -90,15 +90,17 @@ tasks:
   build:darwin:
     desc: Build for macOS amd64 + arm64 natively (requires Xcode CLT)
     cmds:
-      - mkdir -p fyne-cross/dist/darwin-amd64 fyne-cross/dist/darwin-arm64
+      - mkdir -p fyne-cross/dist/darwin-amd64 fyne-cross/dist/darwin-arm64 fyne-cross/bin/darwin-amd64 fyne-cross/bin/darwin-arm64
       - GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build
           -ldflags "-s -w -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}} -X {{.MODULE}}/internal/version.Commit={{.COMMIT}} -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}"
           -o fyne-cross/bin/darwin-amd64/{{.BINARY}} {{.MAIN}}
+      - codesign --force --sign - fyne-cross/bin/darwin-amd64/{{.BINARY}}
       - tar czf fyne-cross/dist/darwin-amd64/{{.BINARY}}-darwin-amd64.tar.gz
           -C fyne-cross/bin/darwin-amd64 {{.BINARY}}
       - GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build
           -ldflags "-s -w -X {{.MODULE}}/internal/version.Version={{.NEXT_TAG}} -X {{.MODULE}}/internal/version.Commit={{.COMMIT}} -X {{.MODULE}}/internal/version.BuildDate={{.BUILD_DATE}}"
           -o fyne-cross/bin/darwin-arm64/{{.BINARY}} {{.MAIN}}
+      - codesign --force --sign - fyne-cross/bin/darwin-arm64/{{.BINARY}}
       - tar czf fyne-cross/dist/darwin-arm64/{{.BINARY}}-darwin-arm64.tar.gz
           -C fyne-cross/bin/darwin-arm64 {{.BINARY}}
 
